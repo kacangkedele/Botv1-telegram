@@ -1,13 +1,8 @@
 """
 ╔══════════════════════════════════════════════════╗
 ║        UBOT LIST - Manajemen Taruhan K/B         ║
-║          Telegram Userbot by Angga Official              ║
+║             By Angga Official                    ║
 ╚══════════════════════════════════════════════════╝
-
-Cara pakai:
-1. Edit config.py dengan API_ID, API_HASH, ADMIN_IDS
-2. pip install -r requirements.txt
-3. python ubot_list.py
 """
 
 import os
@@ -16,6 +11,15 @@ import json
 import asyncio
 from telethon import TelegramClient, events
 from config import API_ID, API_HASH, ADMIN_IDS, SESSION_NAME, DATA_FILE
+
+# ═══════════════════════════════════════════
+# FIX PYTHON 3.14: Buat event loop manual
+# ═══════════════════════════════════════════
+try:
+    loop = asyncio.get_running_loop()
+except RuntimeError:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
 
 # ═══════════════════════════════════════════
@@ -30,13 +34,12 @@ def load_data():
         except Exception:
             pass
     return {
-        "active": {},        # {chat_id_str: True/False}
-        "perak_mode": {},   # {chat_id_str: True/False}
-        "bets": {},          # {chat_id_str: {user_id_str: {...}}}
-        "aliases": {},       # {chat_id_str: {user_id_str: "name"}}
-        "geseran": {},       # {chat_id_str: {key: {nominal, max}}}
+        "active": {},
+        "perak_mode": {},
+        "bets": {},
+        "aliases": {},
+        "geseran": {},
     }
-
 
 def save_data():
     try:
@@ -45,9 +48,7 @@ def save_data():
     except Exception as e:
         print(f"[ERROR] Gagal save data: {e}")
 
-
 data = load_data()
-
 
 # ═══════════════════════════════════════════
 # HELPER FUNCTIONS
@@ -56,14 +57,11 @@ data = load_data()
 def is_admin(user_id):
     return user_id in ADMIN_IDS
 
-
 def is_active(chat_id):
     return data["active"].get(str(chat_id), False)
 
-
 def is_perak(chat_id):
     return data["perak_mode"].get(str(chat_id), True)
-
 
 def get_bets(chat_id):
     cid = str(chat_id)
@@ -71,51 +69,35 @@ def get_bets(chat_id):
         data["bets"][cid] = {}
     return data["bets"][cid]
 
-
 def get_geseran(chat_id):
     cid = str(chat_id)
     if cid not in data["geseran"]:
         data["geseran"][cid] = {}
     return data["geseran"][cid]
 
-
 def parse_bet(text):
-    """
-    Parse format bet:
-    K5, B10, K 5, B 10  → (type, amount)
-    5K, 10B             → (type, amount)
-    B1.5, B1,5          → (type, amount) dengan desimal
-    """
     text = text.strip().upper().replace(",", ".")
-    # Format: K5 / B10
     m = re.match(r"^([KB])\s*(\d+(?:\.\d+)?)$", text)
     if m:
         return m.group(1), float(m.group(2))
-    # Format: 5K / 10B
     m = re.match(r"^(\d+(?:\.\d+)?)\s*([KB])$", text)
     if m:
         return m.group(2), float(m.group(1))
     return None, None
 
-
 def calc_amount(raw, perak_mode):
-    """Hitung nominal berdasarkan mode perak"""
     if perak_mode:
         return int(raw * 1000)
     if raw == int(raw):
         return int(raw)
     return raw
 
-
 def format_amount(amount):
-    """Format angka untuk tampilan"""
     if isinstance(amount, int):
         return str(amount)
     return str(amount)
 
-
 async def get_display_name(user):
-    """Ambil nama user"""
     if not user:
         return "Unknown"
     name = user.first_name or ""
@@ -123,16 +105,15 @@ async def get_display_name(user):
         name += f" {user.last_name}"
     return name.strip() or f"User_{user.id}"
 
-
 # ═══════════════════════════════════════════
 # INISIALISASI CLIENT
 # ═══════════════════════════════════════════
 
-client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
+client = TelegramClient(SESSION_NAME, API_ID, API_HASH, loop=loop)
 
 
 # ═══════════════════════════════════════════
-# COMMAND: .on
+# COMMANDS
 # ═══════════════════════════════════════════
 
 @client.on(events.NewMessage(pattern=r"^\.on$"))
@@ -144,16 +125,7 @@ async def cmd_on(event):
     if cid not in data["perak_mode"]:
         data["perak_mode"][cid] = True
     save_data()
-    await event.reply(
-        "✅ **UBOT LIST AKTIF**\n\n"
-        "Bot mulai mencatat bet K/B.\n"
-        "Ketik `.cmd` untuk melihat semua command."
-    )
-
-
-# ═══════════════════════════════════════════
-# COMMAND: .off
-# ═══════════════════════════════════════════
+    await event.reply("✅ **UBOT LIST AKTIF**\nBot mulai mencatat bet.\nKetik `.cmd` untuk melihat semua command.")
 
 @client.on(events.NewMessage(pattern=r"^\.off$"))
 async def cmd_off(event):
@@ -164,11 +136,6 @@ async def cmd_off(event):
     save_data()
     await event.reply("❌ **UBOT LIST DIMATIKAN**\nBot berhenti mencatat bet.")
 
-
-# ═══════════════════════════════════════════
-# COMMAND: .list
-# ═══════════════════════════════════════════
-
 @client.on(events.NewMessage(pattern=r"^\.list$"))
 async def cmd_list(event):
     bets = get_bets(event.chat_id)
@@ -176,8 +143,7 @@ async def cmd_list(event):
         await event.reply("📋 **List masih kosong**\nBelum ada yang pasang bet.")
         return
 
-    k_list = []
-    b_list = []
+    k_list, b_list = [], []
     for uid, info in bets.items():
         line = f"• {info['name']} {format_amount(info['amount'])}"
         if info["username"]:
@@ -195,18 +161,11 @@ async def cmd_list(event):
         msg += "🔻 **K (Kecil)**\n" + "\n".join(k_list) + "\n\n"
     if b_list:
         msg += "🔺 **B (Besar)**\n" + "\n".join(b_list) + "\n\n"
-
     msg += "━━━━━━━━━━━━━\n"
     msg += f"📊 Total K: **{format_amount(k_total)}**\n"
     msg += f"📊 Total B: **{format_amount(b_total)}**\n"
     msg += f"👥 Total pemain: **{len(bets)}**"
-
     await event.reply(msg)
-
-
-# ═══════════════════════════════════════════
-# COMMAND: .rs (reset list)
-# ═══════════════════════════════════════════
 
 @client.on(events.NewMessage(pattern=r"^\.rs$"))
 async def cmd_rs(event):
@@ -216,11 +175,6 @@ async def cmd_rs(event):
     data["bets"][cid] = {}
     save_data()
     await event.reply("🗑 **List dikosongkan**\nRonde baru dimulai. Silakan pasang bet!")
-
-
-# ═══════════════════════════════════════════
-# COMMAND: .rk (rekap)
-# ═══════════════════════════════════════════
 
 @client.on(events.NewMessage(pattern=r"^\.rk$"))
 async def cmd_rk(event):
@@ -232,7 +186,6 @@ async def cmd_rk(event):
     k_total = sum(i["amount"] for i in bets.values() if i["type"] == "K")
     b_total = sum(i["amount"] for i in bets.values() if i["type"] == "B")
     selisih = abs(k_total - b_total)
-
     k_count = sum(1 for i in bets.values() if i["type"] == "K")
     b_count = sum(1 for i in bets.values() if i["type"] == "B")
 
@@ -240,46 +193,29 @@ async def cmd_rk(event):
     msg += f"🔻 K: {k_count} pemain → **{format_amount(k_total)}**\n"
     msg += f"🔺 B: {b_count} pemain → **{format_amount(b_total)}**\n"
     msg += "━━━━━━━━━━━━━\n"
-
     if k_total > b_total:
-        msg += f"⚠️ **B kurang {format_amount(selisih)}**\n"
-        msg += f"💰 B perlu tambah **{format_amount(selisih)}**"
+        msg += f"⚠️ **B kurang {format_amount(selisih)}**\n💰 B perlu tambah **{format_amount(selisih)}**"
     elif b_total > k_total:
-        msg += f"⚠️ **K kurang {format_amount(selisih)}**\n"
-        msg += f"💰 K perlu tambah **{format_amount(selisih)}**"
+        msg += f"⚠️ **K kurang {format_amount(selisih)}**\n💰 K perlu tambah **{format_amount(selisih)}**"
     else:
         msg += "✅ **K & B Seimbang!**"
-
     await event.reply(msg)
-
-
-# ═══════════════════════════════════════════
-# COMMAND: .perak / .nonperak
-# ═══════════════════════════════════════════
 
 @client.on(events.NewMessage(pattern=r"^\.perak$"))
 async def cmd_perak(event):
     if not is_admin(event.sender_id):
         return
-    cid = str(event.chat_id)
-    data["perak_mode"][cid] = True
+    data["perak_mode"][str(event.chat_id)] = True
     save_data()
     await event.reply("💰 **Mode PERAK aktif**\n`B1` = 1000 (dikali 1000)")
-
 
 @client.on(events.NewMessage(pattern=r"^\.nonperak$"))
 async def cmd_nonperak(event):
     if not is_admin(event.sender_id):
         return
-    cid = str(event.chat_id)
-    data["perak_mode"][cid] = False
+    data["perak_mode"][str(event.chat_id)] = False
     save_data()
     await event.reply("💵 **Mode NON-PERAK aktif**\n`B1` = 1 (nilai asli)")
-
-
-# ═══════════════════════════════════════════
-# COMMAND: .h NAMA (hapus slot)
-# ═══════════════════════════════════════════
 
 @client.on(events.NewMessage(pattern=r"^\.h\s+(.+)$"))
 async def cmd_hapus(event):
@@ -287,7 +223,6 @@ async def cmd_hapus(event):
         return
     target_name = event.pattern_match.group(1).strip().lower()
     bets = get_bets(event.chat_id)
-
     found_uid = None
     found_name = None
     for uid, info in bets.items():
@@ -295,18 +230,12 @@ async def cmd_hapus(event):
             found_uid = uid
             found_name = info["name"]
             break
-
     if found_uid:
         del bets[found_uid]
         save_data()
         await event.reply(f"🗑 Slot **{found_name}** dihapus.")
     else:
         await event.reply(f"❌ Tidak ada slot dengan nama `{target_name}`.")
-
-
-# ═══════════════════════════════════════════
-# COMMAND: .c (hapus titik dari bet - reply based)
-# ═══════════════════════════════════════════
 
 @client.on(events.NewMessage(pattern=r"^\.c$"))
 async def cmd_clean_dot(event):
@@ -322,11 +251,6 @@ async def cmd_clean_dot(event):
     cleaned = reply.text.replace(".", "").replace(",", "")
     await event.reply(f"🧹 **Bersih:** `{cleaned}`")
 
-
-# ═══════════════════════════════════════════
-# COMMAND: .geseran KEY N MAX
-# ═══════════════════════════════════════════
-
 @client.on(events.NewMessage(pattern=r"^\.geseran\s+(\S+)\s+(\d+(?:\.\d+)?)\s+(\d+)$"))
 async def cmd_geseran(event):
     if not is_admin(event.sender_id):
@@ -335,24 +259,9 @@ async def cmd_geseran(event):
     key = event.pattern_match.group(1).lower()
     nominal = float(event.pattern_match.group(2))
     max_user = int(event.pattern_match.group(3))
-
-    get_geseran(event.chat_id)[key] = {
-        "nominal": nominal,
-        "max": max_user,
-        "users": [],
-    }
+    get_geseran(event.chat_id)[key] = {"nominal": nominal, "max": max_user, "users": []}
     save_data()
-    await event.reply(
-        f"🎯 **Geseran `{key}` dibuat**\n\n"
-        f"Nominal: **{nominal}**\n"
-        f"Max user: **{max_user}**\n\n"
-        f"Pakai: `{key} b` atau `{key} k`"
-    )
-
-
-# ═══════════════════════════════════════════
-# COMMAND: .sv NAMA (reply based alias)
-# ═══════════════════════════════════════════
+    await event.reply(f"🎯 **Geseran `{key}` dibuat**\nNominal: **{nominal}**\nMax user: **{max_user}**\n\nPakai: `{key} b` atau `{key} k`")
 
 @client.on(events.NewMessage(pattern=r"^\.sv\s+(\S+)$"))
 async def cmd_sv(event):
@@ -365,33 +274,24 @@ async def cmd_sv(event):
     if not reply or not reply.sender_id:
         await event.reply("❌ Tidak bisa mengambil user dari pesan.")
         return
-
     name = event.pattern_match.group(1)
     cid = str(event.chat_id)
     if cid not in data["aliases"]:
         data["aliases"][cid] = {}
     data["aliases"][cid][str(reply.sender_id)] = name
     save_data()
-
     try:
         user = await event.client.get_entity(reply.sender_id)
         display = await get_display_name(user)
     except Exception:
         display = f"User_{reply.sender_id}"
-
     await event.reply(f"✅ Alias tersimpan:\n**{display}** → `{name}`")
-
-
-# ═══════════════════════════════════════════
-# COMMAND: .svlist
-# ═══════════════════════════════════════════
 
 @client.on(events.NewMessage(pattern=r"^\.svlist$"))
 async def cmd_svlist(event):
     if not is_admin(event.sender_id):
         return
-    cid = str(event.chat_id)
-    aliases = data["aliases"].get(cid, {})
+    aliases = data["aliases"].get(str(event.chat_id), {})
     if not aliases:
         await event.reply("📋 Belum ada alias tersimpan.")
         return
@@ -399,11 +299,6 @@ async def cmd_svlist(event):
     for uid, name in aliases.items():
         msg += f"• `{name}` → [User](tg://user?id={uid})\n"
     await event.reply(msg)
-
-
-# ═══════════════════════════════════════════
-# COMMAND: .svdel
-# ═══════════════════════════════════════════
 
 @client.on(events.NewMessage(pattern=r"^\.svdel$"))
 async def cmd_svdel(event):
@@ -421,17 +316,11 @@ async def cmd_svdel(event):
     else:
         await event.reply("❌ Alias tidak ditemukan untuk user ini.")
 
-
-# ═══════════════════════════════════════════
-# COMMAND: .svsync
-# ═══════════════════════════════════════════
-
 @client.on(events.NewMessage(pattern=r"^\.svsync$"))
 async def cmd_svsync(event):
     if not is_admin(event.sender_id):
         return
-    cid = str(event.chat_id)
-    aliases = data["aliases"].get(cid, {})
+    aliases = data["aliases"].get(str(event.chat_id), {})
     if not aliases:
         await event.reply("❌ Tidak ada alias untuk di-sync.")
         return
@@ -440,11 +329,6 @@ async def cmd_svsync(event):
         msg += f"• `{name}` → ID: {uid}\n"
     msg += "\n✅ Sync selesai."
     await event.reply(msg)
-
-
-# ═══════════════════════════════════════════
-# COMMAND: .addp (mark P in pinned/replied message)
-# ═══════════════════════════════════════════
 
 @client.on(events.NewMessage(pattern=r"^\.addp$"))
 async def cmd_addp(event):
@@ -457,31 +341,20 @@ async def cmd_addp(event):
     if not reply or not reply.text:
         await event.reply("❌ Pesan tidak memiliki teks.")
         return
-
     lines = reply.text.strip().split("\n")
     marked = []
     for line in lines:
         line = line.strip()
-        # Match: Name 5000 atau Name: 5000
         m = re.match(r"^(.+?)\s*[:\s]\s*(\d+)\s*$", line)
         if m:
             name = m.group(1).strip()
             saldo = int(m.group(2))
             if saldo > 0:
                 marked.append(f"• {name} {saldo} ✅P")
-
     if marked:
         await event.reply("📌 **Saldo ditandai (P):**\n\n" + "\n".join(marked))
     else:
-        await event.reply(
-            "❌ Format tidak dikenali.\n"
-            "Contoh format:\n```\nAngga 5000\nRangga 10000\n```"
-        )
-
-
-# ═══════════════════════════════════════════
-# COMMAND: Ball (pasang semua saldo dari pin)
-# ═══════════════════════════════════════════
+        await event.reply("❌ Format tidak dikenali.")
 
 @client.on(events.NewMessage(pattern=r"^Ball$"))
 async def cmd_ball(event):
@@ -497,7 +370,6 @@ async def cmd_ball(event):
     if not reply or not reply.text:
         await event.reply("❌ Pesan tidak memiliki teks.")
         return
-
     lines = reply.text.strip().split("\n")
     added = []
     for line in lines:
@@ -507,20 +379,10 @@ async def cmd_ball(event):
             name = m.group(1).strip()
             saldo = int(m.group(2))
             added.append(f"• {name} → {saldo}")
-
     if added:
-        await event.reply(
-            "🎯 **BALL - Pasang Semua Saldo**\n\n"
-            + "\n".join(added)
-            + "\n\n⚠️ Fitur ini perlu mapping nama ke user_id."
-        )
+        await event.reply("🎯 **BALL - Pasang Semua Saldo**\n\n" + "\n".join(added))
     else:
         await event.reply("❌ Tidak ada saldo yang terdeteksi di pesan.")
-
-
-# ═══════════════════════════════════════════
-# COMMAND: .cmd (help)
-# ═══════════════════════════════════════════
 
 @client.on(events.NewMessage(pattern=r"^\.cmd$"))
 async def cmd_help(event):
@@ -565,7 +427,7 @@ async def cmd_help(event):
 `B1.5` / `B1,5` — Besar 1.5 (desimal)
 
 ━━━━━━━━━━━━━
-*Userbot By Evanz*"""
+*By Angga Official*"""
     await event.reply(msg)
 
 
@@ -575,100 +437,47 @@ async def cmd_help(event):
 
 @client.on(events.NewMessage())
 async def handle_bet(event):
-    # Cek apakah ada teks
-    if not event.text:
+    if not event.text or not is_active(event.chat_id):
         return
-
-    cid = event.chat_id
-    # Bot harus aktif
-    if not is_active(cid):
-        return
-
     text = event.text.strip()
-
-    # Skip command (diawali titik)
-    if text.startswith("."):
+    if text.startswith(".") or text == "Ball":
         return
 
-    # Skip "Ball" command
-    if text == "Ball":
-        return
-
-    # ═══════════════════════════════════════
-    # CEK GESERAN PRESET
-    # ═══════════════════════════════════════
-    geseran = get_geseran(cid)
-    g_match = re.match(
-        r"^([a-zA-Z]+)\s+([kb])(?:\s*#(\d+(?:\.\d+)?))?$",
-        text,
-        re.IGNORECASE,
-    )
+    geseran = get_geseran(event.chat_id)
+    g_match = re.match(r"^([a-zA-Z]+)\s+([kb])(?:\s*#(\d+(?:\.\d+)?))?$", text, re.IGNORECASE)
     if g_match:
         key = g_match.group(1).lower()
         if key in geseran:
             bet_type = g_match.group(2).upper()
             preset = geseran[key]
-            if g_match.group(3):
-                raw = float(g_match.group(3))
-            else:
-                raw = preset["nominal"]
-
-            amount = calc_amount(raw, is_perak(cid))
-
-            # Ambil info user
+            raw = float(g_match.group(3)) if g_match.group(3) else preset["nominal"]
+            amount = calc_amount(raw, is_perak(event.chat_id))
             try:
                 user = await event.get_sender()
                 name = await get_display_name(user)
             except Exception:
                 name = f"User_{event.sender_id}"
-
-            uname = ""
-            if user and user.username:
-                uname = f"@{user.username}"
-
-            # Simpan bet
-            get_bets(cid)[str(event.sender_id)] = {
-                "name": name,
-                "username": uname,
-                "type": bet_type,
-                "amount": amount,
-            }
+            uname = f"@{user.username}" if user and user.username else ""
+            get_bets(event.chat_id)[str(event.sender_id)] = {"name": name, "username": uname, "type": bet_type, "amount": amount}
             save_data()
-
             display_raw = int(raw) if raw == int(raw) else raw
             await event.reply(f"✅ {name} {bet_type}{display_raw}")
             return
 
-    # ═══════════════════════════════════════
-    # CEK BET NORMAL (K5, B10, 5K, 10B)
-    # ═══════════════════════════════════════
     bet_type, raw = parse_bet(text)
     if bet_type is None:
         return
 
-    amount = calc_amount(raw, is_perak(cid))
-
-    # Ambil info user
+    amount = calc_amount(raw, is_perak(event.chat_id))
     try:
         user = await event.get_sender()
         name = await get_display_name(user)
     except Exception:
         name = f"User_{event.sender_id}"
         user = None
-
-    uname = ""
-    if user and user.username:
-        uname = f"@{user.username}"
-
-    # Simpan bet
-    get_bets(cid)[str(event.sender_id)] = {
-        "name": name,
-        "username": uname,
-        "type": bet_type,
-        "amount": amount,
-    }
+    uname = f"@{user.username}" if user and user.username else ""
+    get_bets(event.chat_id)[str(event.sender_id)] = {"name": name, "username": uname, "type": bet_type, "amount": amount}
     save_data()
-
     display_raw = int(raw) if raw == int(raw) else raw
     await event.reply(f"✅ {name} {bet_type}{display_raw}")
 
@@ -681,29 +490,22 @@ async def main():
     print("=" * 50)
     print("  🚀 UBOT LIST - Starting...")
     print("=" * 50)
-
     await client.start()
-
     me = await client.get_me()
     print(f"\n  ✅ Login sebagai: {me.first_name}")
     if me.username:
         print(f"  📱 Username: @{me.username}")
     print(f"  🆔 ID: {me.id}")
-    print(f"  👑 Admin IDs: {ADMIN_IDS}")
     print("\n  📋 Bot aktif & menunggu command...")
     print("  Ketik .on di grup untuk mulai.")
     print("=" * 50)
     print("  Tekan Ctrl+C untuk berhenti.\n")
-
     await client.run_until_disconnected()
-
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        loop.run_until_complete(main())
     except KeyboardInterrupt:
         print("\n\n👋 Bot dihentikan. Sampai jumpa!")
     except Exception as e:
         print(f"\n❌ Error: {e}")
-        print("\n💡 Pastikan config.py sudah diisi dengan benar.")
-        print("   API_ID: https://my.telegram.org/apps")
